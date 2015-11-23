@@ -1,0 +1,37 @@
+<launch>
+
+<node name="hokuyo_node" pkg="hokuyo_node" type="hokuyo_node">
+	
+	<param name="frame_id" value="/base_laser"/>
+</node>
+  
+<node name="tf_broadcaster" pkg="robot_setup_tf" type="tf_broadcaster" output="screen"
+/>
+
+<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="0 0 0 0 0 0 base_footprint base_link 100" />
+  
+<node name="turtlebot_node" type="turtlebot_node.py" pkg="turtlebot_node">
+    <rosparam>
+      
+      publish_tf: True
+      has_gyro: False
+      odom_angular_scale_correction: 0.993617902
+      odom_linear_scale_correction: 1
+
+    </rosparam>
+  </node>
+
+<node name="amcl" type="amcl" pkg="amcl">
+    <rosparam>
+      update_min_d: 0.1
+      update_min_a: 0.1
+      odom_alpha1: 0.8
+      odom_alpha2: 0.2
+      odom_alpha3: 0.8
+      odom_alpha4: 0.5
+
+    </rosparam>
+  </node>
+
+
+</launch>

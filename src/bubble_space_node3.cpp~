@@ -1,0 +1,761 @@
+#include <ros/ros.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <stdio.h>
+#include "bubbleprocess.h"
+#include "imageprocess.h"
+#include "databasemanager.h"
+#include "qstring.h"
+#include <fstream>
+#include <time.h>
+#include <sys/time.h>
+
+#include <pcl-1.5/pcl/common/common_headers.h>
+#include <pcl-1.5/pcl/filters/voxel_grid.h>
+#include <pcl-1.5/pcl/common/transforms.h>
+//#include <pcl-1.5/pcl/visualization/pcl_visualizer.h>
+#include <pcl-1.5/pcl/impl/point_types.hpp>
+#include <pcl-1.5/pcl/point_types_conversion.h>
+
+//Includes for database
+#include <QObject>
+#include <QtSql/QSqlDatabase>
+#include <QtSql/QSqlError>
+#include <QFile>
+#include <QDir>
+#include <QtSql/QSqlQuery>
+#include <QVariant>
+#include <QDebug>
+#include <QVector>
+
+//Include for initial pose publishing
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <complex>
+#include <geometry_msgs/Twist.h>
+
+static const char WINDOW_NAME[] = "Depth View";
+
+//Gloabal Variables
+cv::Mat filters[5];
+cv::Mat invariantMatrix;
+ros::Publisher initialPosePublisher;
+ros::Publisher velocityCommandPublisher;
+bool normalizeInvariants = true;
+int max_point_number = 5;  //Maximally 5 points
+int grid_size = 4;
+double tolerance = 0.03;
+double bubble_update_period = 10;
+double angular_velocity;
+double covariance_xy, covariance_w, covariance_factor_xy, covariance_factor_w;
+//ros::Timer motionTimer;
+//unsigned int motionTimerCounter=0;
+//bool stopMotion = false;
+
+float radTodeg(float angle){
+    return angle*180/M_PI;
+}
+
+std::complex<float> convertOrientationToComplex(unsigned int orientation){
+    switch(orientation){
+    case 0: return std::complex<float>(0,1);
+    case 1: return std::complex<float>(1/sqrt(2),1/sqrt(2));
+    case 2: return std::complex<float>(1,0);
+    case 3: return std::complex<float>(1/sqrt(2),-1/sqrt(2));
+    case 4: return std::complex<float>(0,-1);
+    case 5: return std::complex<float>(-1/sqrt(2),-1/sqrt(2));
+    case 6: return std::complex<float>(-1,0);
+    case 7: return std::complex<float>(-1/sqrt(2),1/sqrt(2));
+    }
+}
+
+std::complex<float> convertPointToComplex(unsigned int pointID){
+    return std::complex<float>(pointID%grid_size, pointID/grid_size);
+}
+
+/*void motionTimerCallback(const ros::TimerEvent& motionTimerEvent)
+{
+    ROS_INFO("Motion Timer Callback triggered");
+    motionTimerCounter++;
+    stopMotion = true;
+}*/
+
+/*unsigned int computePose(cv::Mat currentInvariant){
+    //invariantMatrix = invariantMatrix.colRange(0,600);
+    //currentInvariant = currentInvariant.colRange(0,600);
+
+    cv::FlannBasedMatcher matcher;
+    std::vector< cv::DMatch > matches;
+    matcher.match(currentInvariant, invariantMatrix, matches);
+    unsigned int min_index = 0;
+    unsigned int i;
+    for(i=1; i<matches.size(); i++){
+        if(matches[i].distance < matches[min_index].distance){
+            min_index = i;
+        }
+    }
+    //std::cout << "Pt: "<< matches[min_index].trainIdx << " Dist: " << matches[min_index].distance << std::endl;
+
+    cv::Mat distances(invariantMatrix.rows, 1, CV_32FC1), sortedIndices(invariantMatrix.rows, 1, CV_16UC1);
+    for(i=0; i<invariantMatrix.rows; i++){
+        distances.at<float>(i,0) = cv::norm(invariantMatrix.row(i) - currentInvariant);
+    }
+    cv::sortIdx(distances, sortedIndices, CV_SORT_EVERY_COLUMN + CV_SORT_ASCENDING);
+    //std::cout << sortedIndices << std::endl;
+
+    int num_nearest_points = 10;  //Maximally 10 points
+    float nearestDistance = distances.at<float>(sortedIndices.at<unsigned int>(0,0),0);
+    float tolerance=0.03;
+    for(i=1; i<num_nearest_points; i++){
+        if((distances.at<float>(sortedIndices.at<unsigned int>(i,0),0)-nearestDistance)/nearestDistance > tolerance){
+            num_nearest_points = i;
+            qDebug() << "num_nearest_points: " << num_nearest_points;
+            break;
+        }
+    }
+
+    cv::Mat nearestOrientations = cv::Mat_<std::complex<float> >(num_nearest_points, 1);
+    cv::Mat weights(num_nearest_points, 1, CV_32FC1);
+
+    float avgPointIDx=0, avgPointIDy=0;
+    std::complex<float> sumOrientation(0,0);
+    int pointID[13] = {0, 1, 2, 3, 4, 5, 7, 9, 11, 12, 13, 14, 15};
+    for(i=0; i<num_nearest_points; i++){
+        nearestOrientations.at<std::complex<float> >(i,0) = convertOrientationToComplex(sortedIndices.at<unsigned int>(i,0)%8);
+        weights.at<float>(i,0) = 1/distances.at<float>(sortedIndices.at<unsigned int>(i,0),0);  //Weight for the weighted average
+        sumOrientation += nearestOrientations.at<std::complex<float> >(i,0)*weights.at<float>(i,0);
+        avgPointIDx += std::real(convertPointToComplex(pointID[sortedIndices.at<unsigned int>(i,0)/8]))*weights.at<float>(i,0);
+        avgPointIDy += std::imag(convertPointToComplex(pointID[sortedIndices.at<unsigned int>(i,0)/8]))*weights.at<float>(i,0);
+        if(pointID[sortedIndices.at<unsigned int>(i,0)/8]<10)
+            qDebug() << pointID[sortedIndices.at<unsigned int>(i,0)/8] << "  " << sortedIndices.at<unsigned int>(i,0)%8;
+        else
+            qDebug() << pointID[sortedIndices.at<unsigned int>(i,0)/8] << " " << sortedIndices.at<unsigned int>(i,0)%8;
+    }
+    cv::Scalar sumOfWeights = sum(weights);
+    avgPointIDx = avgPointIDx / sumOfWeights[0];
+    avgPointIDy = avgPointIDy / sumOfWeights[0];
+    qDebug() << "Weighted Avg Point ID: " << avgPointIDx << " " << avgPointIDy << " Sum Orient: " << std::abs(sumOrientation) << " " << std::arg(sumOrientation);
+
+    //Mean yanlış, çünkü 0 ile 7'nin mean'i 3.5 ama 0 ile 7 neredeyse aynı yönde, 3.5 tam ters
+    //cv::Scalar meanOrientation = mean(nearestOrientations);
+    //qDebug() << "Orient. Mean: " << atan2(meanOrientation[1],meanOrientation[1]);// << " Orient. Median" << nearestOrientations.at<unsigned int>(num_nearest_points/2,0);
+
+
+
+    //cv::sort(distances, distances, CV_SORT_EVERY_COLUMN + CV_SORT_ASCENDING);
+    //std::cout << distances << std::endl << std::endl << std::endl;
+
+
+    return matches[min_index].trainIdx;
+}
+*/
+
+
+
+
+void mstReadFilters(QStringList fileNames, int filterSize, bool transpose, bool save, bool show)
+{
+    for(unsigned int i=0; i<fileNames.size(); i++){
+        filters[i] = Mat(filterSize,filterSize,CV_32FC1);
+        /*QString dirr = fileName;
+        qDebug()<<"Dir is :"<<dirr;
+        QFile file(dirr);*/
+        QFile file(fileNames[i]);
+        file.open(QFile::ReadOnly);
+        QTextStream stream(&file);
+        if(!file.isOpen()) return ;
+        QString line = stream.readLine();
+        double count = 0;
+        double count2 = 0;
+        while(line != NULL)
+        {
+            filters[i].at<float>(count,count2) = line.toFloat();
+            count++;
+            if(count == filterSize){
+                count2++;
+                count = 0;
+            }
+            line = stream.readLine();
+        }
+        file.close();
+
+        if(transpose)
+            cv::transpose(filters[i],filters[i]);
+
+        /*cv::convertScaleAbs(filters[i],filter,128,128);
+        cv::Mat resizedFilter;
+        cv::resize(filter,resizedFilter,resizedFilter.size(),5,5);
+
+        if(show)
+        {
+            namedWindow("filter");
+            imshow("filter",resizedFilter);
+            waitKey();
+            destroyWindow("filter");
+        }
+        if(save)
+        {
+            imwrite("filter.jpg",resizedFilter);
+            qDebug()<<"Filter image saved";
+        }*/
+    }
+    //return filters;
+}
+
+
+
+//bool insertInvariants(int type, int number, std::vector< std::vector<float> > invariants)
+//{
+//    ROS_INFO("Insert Called");
+//    // Get the root directory
+//    QString filePath = "/home/mustafasezer/Desktop/db_deneme.db";
+
+//    static QSqlDatabase db;
+//    static QVector<int> placeLabels;
+
+//    if(filePath != NULL)
+//    {
+//        db = QSqlDatabase::addDatabase("QSQLITE");
+//        ROS_INFO("addDatabase successful");
+
+//#ifdef Q_OS_LINUX
+//        // NOTE: We have to store database file into user home folder in Linux
+//        //QString path(QDir::home().path());
+
+//        //path.append(QDir::separator()).append("Development").append(QDir::separator()).append("ISL").append(QDir::separator()).append("Datasets").append(QDir::separator()).append("ImageClef2012").append(QDir::separator()).append("bubble.bubbledb");
+//        QString path = QDir::toNativeSeparators(filePath);
+//        db.setDatabaseName(path);
+//        //Development/ISL/Datasets/ImageClef2012
+//#else
+//        // NOTE: File exists in the application private folder, in Symbian Qt implementation
+//        //  bubbledb.setDatabaseName("my.bubbledb.sqlite");
+//#endif
+//        if(db.open())
+//        {
+//            ROS_INFO("Database opened Successfully!!");
+//        }
+//    }
+//    //bool ret = false;
+
+//    //if (db.isOpen())
+//    //{
+//    QSqlQuery query;
+//    // First check, if a bubble has already entered to the table
+//    /*    bool exists = query.exec(QString("select * from invariant where type = %1 and number = %2").arg(type).arg(number));
+//        // If query is successfully executed
+//        if(exists)
+//        {
+//            // if there are elements received from the table, then there exists a bubble, we should delete those entries
+//            if(query.next())
+//            {
+//                ret = query.exec(QString("delete from invariant where type = %1 and number = %2").arg(type).arg(number));
+//                // If deletion is not successfuly executed return false
+//                if(!ret)
+//                    return false;
+//            }
+//*/
+//    //else return false;
+//    // Speed up the multiple-row insertion by using transactions
+//    //query.exec(QString("BEGIN TRANSACTION"));
+//    query.prepare(QString("replace into invariant values(?, ?, ?, ?)"));
+//    QVariantList typee;
+//    QVariantList numberr;
+//    QVariantList placeLabel;
+//    QVariantList val;
+//    db.transaction();
+//    // Insert new bubble
+//    for(int i = 0; i <invariants.size(); i++)
+//    {
+//        for(int j = 0; j < invariants[i].size();j++){
+//            val<< invariants[i][j];
+//            typee<<type;
+//            numberr<<number;
+//            if(placeLabels.size() >= number)
+//            {
+//                placeLabel<<placeLabels.at(number-1);
+//            }
+//            else
+//                placeLabel<<-1;
+//            //query.exec(QString("replace into invariant values('%1', '%2', '%3')").arg(type).arg(number).arg(val));
+//        }
+//    }
+//    query.addBindValue(typee);
+//    query.addBindValue(numberr);
+//    query.addBindValue(placeLabel);
+//    query.addBindValue(val);
+//    // query.exec(QString("COMMIT TRANSACTION"));
+//    if (!query.execBatch())
+//        qDebug() << query.lastError();
+//    db.commit();
+//    return true;
+//    //}
+//    //  }
+//    //return false;
+//}
+
+void pointcloudRegisteredCallback(const sensor_msgs::PointCloud2ConstPtr& cloud){
+    //ROS_INFO("Entered pointcloudRegisteredCallback");
+
+
+    struct timespec t1, t2;
+    double elapsed_time;
+    volatile long long i;
+    clock_gettime(CLOCK_MONOTONIC,  &t1);
+
+
+    std::vector<bubblePointXYZ> bubble;
+    //sensor_msgs::PointCloud2::Ptr cloud = pcProcessing->getCurrentCloud();
+    std::vector<sensor_msgs::PointField> fields = cloud->fields;
+
+    int satLower = 30;
+    int satUpper = 230;
+    int valLower = 30;
+    int valUpper = 230;
+    int focalLengthPixels = 525;
+    double maxRangeMeters = 6.5;
+    int noHarmonics = 10;
+
+
+    cv::Mat invariants(1,noHarmonics*noHarmonics,CV_32FC1);
+    cv::Mat normalizedDummyVector;
+
+    if(fields.at(3).name == "rgba")
+    {
+        ROS_INFO("Processing Pointcloud - name=rgba");
+        pcl::PointCloud<pcl::PointXYZRGBA> normalCloud;
+        pcl::fromROSMsg(*cloud,normalCloud);
+
+        //Mustafa - Convert RGB fields in Pointcloud to cv::Mat
+        //        sensor_msgs::Image image_msg;
+        //        try
+        //        {
+        //            pcl::toROSMsg (*cloud, image_msg); //convert the cloud
+        //        }
+        //        catch (std::runtime_error e)
+        //        {
+        //            ROS_ERROR_STREAM("Error in converting cloud to image message: " << e.what());
+        //        }
+
+        //        // convert to cv image
+        //        cv_bridge::CvImagePtr bridge;
+        //        try
+        //        {
+        //            bridge = cv_bridge::toCvCopy(image_msg, CV_8UC1);
+        //        }
+        //        catch (cv_bridge::Exception& e)
+        //        {
+        //            ROS_ERROR("Failed to transform RGB image.");
+        //        }
+
+        cv::Mat result;
+        if (normalCloud.isOrganized()) {
+            result = cv::Mat(normalCloud.height, normalCloud.width, CV_8UC3);
+
+            if (!normalCloud.empty()){
+                unsigned int index;
+                for (int h=0; h<result.rows; h++) {
+                    index = h*result.cols;
+                    for (int w=0; w<result.cols; w++) {
+                        /*pcl::PointXYZRGB point = normalCloudRGB.at(w, h);
+                        Eigen::Vector3i rgb = point.getRGBVector3i();*/
+                        result.at<cv::Vec3b>(h,w)[0] = normalCloud.points.at(index).r;
+                        result.at<cv::Vec3b>(h,w)[1] = normalCloud.points.at(index).g;
+                        result.at<cv::Vec3b>(h,w)[2] = normalCloud.points.at(index).b;
+                        index++;
+                    }
+                }
+            }
+        }
+
+        cv::Mat hueChannel= ImageProcess::generateChannelImage(result,0,satLower,satUpper,valLower,valUpper);
+
+        vector<bubblePoint> hueBubble = bubbleProcess::convertGrayImage2Bub(hueChannel,focalLengthPixels,180);
+        vector<bubblePoint> reducedHueBubble = bubbleProcess::reduceBubble(hueBubble);
+        DFCoefficients dfcoeffRGB = bubbleProcess::calculateDFCoefficients(reducedHueBubble,noHarmonics,noHarmonics);
+        std::vector< std::vector<float> > invariants = bubbleProcess::calculateInvariants(reducedHueBubble, dfcoeffRGB,noHarmonics, noHarmonics);
+        //DatabaseManager::insertInvariants(LASER_TYPE,frameNumber,invariants);
+
+        for(unsigned int i = 0; i < normalCloud.points.size(); i++)
+        {
+            bubblePointXYZ pt;
+            pt.x = normalCloud.points.at(i).x;
+            pt.y = normalCloud.points.at(i).y;
+            pt.z = normalCloud.points.at(i).z;
+            bubble.push_back(pt);
+        }
+    }
+    else
+    {
+        pcl::PointCloud<pcl::PointXYZRGB> normalCloud;
+        pcl::fromROSMsg(*cloud,normalCloud);
+
+        //Mustafa - Convert RGB fields in Pointcloud to cv::Mat
+        //        sensor_msgs::Image image_msg;
+        //        try
+        //        {
+        //            pcl::toROSMsg (*cloud, image_msg); //convert the cloud
+        //        }
+        //        catch (std::runtime_error e)
+        //        {
+        //            ROS_ERROR_STREAM("Error in converting cloud to image message: " << e.what());
+        //        }
+
+        //        // convert to cv image
+        //        cv_bridge::CvImagePtr bridge;
+        //        try
+        //        {
+        //            bridge = cv_bridge::toCvCopy(image_msg, CV_8UC1);
+        //        }
+        //        catch (cv_bridge::Exception& e)
+        //        {
+        //            ROS_ERROR("Failed to transform RGB image.");
+        //        }
+
+        cv::Mat result;
+        if (normalCloud.isOrganized()) {
+            result = cv::Mat(normalCloud.height, normalCloud.width, CV_8UC3);
+
+            if (!normalCloud.empty()){
+                unsigned int index;
+                for (int h=0; h<result.rows; h++) {
+                    index = h*result.cols;
+                    for (int w=0; w<result.cols; w++) {
+                        /*pcl::PointXYZRGB point = normalCloudRGB.at(w, h);
+                        Eigen::Vector3i rgb = point.getRGBVector3i();*/
+                        result.at<cv::Vec3b>(h,w)[2] = normalCloud.points.at(index).r;
+                        result.at<cv::Vec3b>(h,w)[1] = normalCloud.points.at(index).g;
+                        result.at<cv::Vec3b>(h,w)[0] = normalCloud.points.at(index).b;
+                        index++;
+                    }
+                }
+            }
+        }
+
+        //Mustafa 05.05
+        //cv::namedWindow(WINDOW_NAME);
+        //cv::imshow(WINDOW_NAME, result);
+        //cv::waitKey(2000);
+
+        //Tüm filtreler için
+        cv::Mat resg;
+        for(unsigned int i=0; i<5; i++){
+            cv::cvtColor(result,resg,CV_BGR2GRAY);
+            cv::Mat sonuc = ImageProcess::mstApplyFilter(resg, filters[i]);
+            vector<bubblePoint> imgBubble = bubbleProcess::convertGrayImage2Bub(sonuc,focalLengthPixels,255);
+            vector<bubblePoint> resred;
+            resred = bubbleProcess::reduceBubble(imgBubble);
+            DFCoefficients dfcoeff =  bubbleProcess::calculateDFCoefficients(resred,noHarmonics,noHarmonics);
+            if(i==0){
+                if(normalizeInvariants == true){
+                    cv::normalize(bubbleProcess::mstCalculateInvariants(resred, dfcoeff,noHarmonics, noHarmonics), invariants);
+                }
+                else{
+                    invariants = bubbleProcess::mstCalculateInvariants(resred, dfcoeff,noHarmonics, noHarmonics);
+                }
+            }
+            else{
+                if(normalizeInvariants == true){
+                    cv::normalize(bubbleProcess::mstCalculateInvariants(resred,dfcoeff,noHarmonics,noHarmonics), normalizedDummyVector);
+                    cv::hconcat(invariants, normalizedDummyVector, invariants);
+                }
+                else{
+                    cv::hconcat(invariants, bubbleProcess::mstCalculateInvariants(resred,dfcoeff,noHarmonics,noHarmonics), invariants);
+                }
+            }
+            bubbleStatistics stats =  bubbleProcess::calculateBubbleStatistics(resred,255);
+        }
+
+        //Hue için
+        cv::Mat hueChannel= ImageProcess::generateChannelImage(result,0,satLower,satUpper,valLower,valUpper);
+        vector<bubblePoint> hueBubble = bubbleProcess::convertGrayImage2Bub(hueChannel,focalLengthPixels,180);
+        vector<bubblePoint> reducedHueBubble = bubbleProcess::reduceBubble(hueBubble);
+        DFCoefficients dfcoeffRGB = bubbleProcess::calculateDFCoefficients(reducedHueBubble,noHarmonics,noHarmonics);
+        if(normalizeInvariants == true){
+            cv::normalize(bubbleProcess::mstCalculateInvariants(reducedHueBubble,dfcoeffRGB,noHarmonics,noHarmonics), normalizedDummyVector);
+            cv::hconcat(invariants, normalizedDummyVector, invariants);
+        }
+        else{
+            cv::hconcat(invariants, bubbleProcess::mstCalculateInvariants(reducedHueBubble,dfcoeffRGB,noHarmonics,noHarmonics), invariants);
+        }
+        /*std::vector< std::vector<float> > resultInv;
+
+        resultInv.resize(10);
+        for(unsigned int i = 0; i < 10;i++)
+        {
+            resultInv[i].resize(10);
+        }
+
+        resultInv = bubbleProcess::calculateInvariants(reducedHueBubble,dfcoeffRGB,noHarmonics,noHarmonics);
+
+        int indexInv=500;
+        for(unsigned int i = 0; i < 10;i++)
+        {
+            for(unsigned int j = 0; j < 10;j++)
+            {
+                qDebug() << resultInv[i][j] << " " << invariants.at<float>(0,indexInv);
+                qDebug() << resultInv[i][j] << " " << invariants.at<float>(0,indexInv);
+                indexInv++;
+            }
+        }
+
+        std::fstream invF;
+        invF.open("/home/mustafasezer/Desktop/invF", std::ios::out);
+        for(unsigned int i = 0; i < 600; i++)
+        {
+            invF << invariants.at<float>(0,i) << std::endl;
+        }
+        invF.close();*/
+
+        //std::cout << "Invariants:\n" << invariants << std::endl;
+
+        //DatabaseManager::insertInvariants(LASER_TYPE,frameNumber,invariants);
+
+        for(unsigned int i = 0; i < normalCloud.points.size(); i++)
+        {
+            bubblePointXYZ pt;
+            pt.x = normalCloud.points.at(i).x;
+            pt.y = normalCloud.points.at(i).y;
+            pt.z = normalCloud.points.at(i).z;
+            bubble.push_back(pt);
+        }
+    }
+
+    //Depth için
+    vector<bubblePoint> sphBubble = bubbleProcess::convertBubXYZ2BubSpherical(bubble,maxRangeMeters);
+    vector<bubblePoint> sphRedBubble = bubbleProcess::reduceBubble(sphBubble);
+    DFCoefficients dfcoeff = bubbleProcess::calculateDFCoefficients(sphRedBubble,noHarmonics,noHarmonics);
+    if(normalizeInvariants == true){
+        cv::normalize(bubbleProcess::mstCalculateInvariants(sphRedBubble, dfcoeff,noHarmonics, noHarmonics), normalizedDummyVector);
+        cv::hconcat(invariants, normalizedDummyVector, invariants);
+    }
+    else{
+        cv::hconcat(invariants, bubbleProcess::mstCalculateInvariants(sphRedBubble, dfcoeff,noHarmonics, noHarmonics), invariants);
+    }
+
+    /*for(unsigned int j=0; j<700; j++){
+        invFile << invariants.at<float>(0,j);
+        invFile << " ";
+    }
+    invFile << "\n";*/
+
+
+    /*  DatabaseManager::insertInvariants(LASER_TYPE,frameNumber,invariants);
+    // Calculate statistics
+    bubbleStatistics statsLaser=  bubbleProcess::calculateBubbleStatistics(sphRedBubble,maxRangeMeters);
+    DatabaseManager::insertBubbleStatistics(LASER_TYPE,frameNumber,statsLaser);*/
+
+
+
+    //Compute Initial Pose
+    cv::FlannBasedMatcher matcher;
+    std::vector< cv::DMatch > matches;
+    matcher.match(invariants, invariantMatrix, matches);
+    unsigned int min_index = 0;
+    for(i=1; i<matches.size(); i++){
+        if(matches[i].distance < matches[min_index].distance){
+            min_index = i;
+        }
+    }
+    //std::cout << "Pt: "<< matches[min_index].trainIdx << " Dist: " << matches[min_index].distance << std::endl;
+
+    cv::Mat distances(invariantMatrix.rows, 1, CV_32FC1), sortedIndices(invariantMatrix.rows, 1, CV_16UC1);
+    for(i=0; i<invariantMatrix.rows; i++){
+        distances.at<float>(i,0) = cv::norm(invariantMatrix.row(i) - invariants);
+    }
+    cv::sortIdx(distances, sortedIndices, CV_SORT_EVERY_COLUMN + CV_SORT_ASCENDING);
+    //std::cout << sortedIndices << std::endl;
+
+    float nearestDistance = distances.at<float>(sortedIndices.at<unsigned int>(0,0),0);
+
+    unsigned int num_nearest_points;
+
+    if(nearestDistance != 0){
+        if((distances.at<float>(sortedIndices.at<unsigned int>(max_point_number-1,0),0)-nearestDistance)/nearestDistance < tolerance){
+            ROS_ERROR("Bubble space localization is too coarse.");
+            return;
+        }
+
+        num_nearest_points = max_point_number;
+        for(i=1; i<max_point_number; i++){
+            if((distances.at<float>(sortedIndices.at<unsigned int>(i,0),0)-nearestDistance)/nearestDistance > tolerance){
+                num_nearest_points = i;
+                qDebug() << "num_nearest_points: " << num_nearest_points;
+                break;
+            }
+        }
+    }
+    else{
+        num_nearest_points = 1;
+    }
+
+    cv::Mat nearestOrientations = cv::Mat_<std::complex<float> >(num_nearest_points, 1);
+    cv::Mat weights(num_nearest_points, 1, CV_32FC1);
+
+    float avgPointIDx=0, avgPointIDy=0;
+    std::complex<float> sumOrientation(0,0);
+    int pointID[13] = {0, 1, 2, 3, 4, 5, 7, 9, 11, 12, 13, 14, 15};
+    for(i=0; i<num_nearest_points; i++){
+        nearestOrientations.at<std::complex<float> >(i,0) = convertOrientationToComplex(sortedIndices.at<unsigned int>(i,0)%8);
+        weights.at<float>(i,0) = 1/distances.at<float>(sortedIndices.at<unsigned int>(i,0),0);  //Weight for the weighted average
+        sumOrientation += nearestOrientations.at<std::complex<float> >(i,0)*weights.at<float>(i,0);
+        avgPointIDx += std::real(convertPointToComplex(pointID[sortedIndices.at<unsigned int>(i,0)/8]))*weights.at<float>(i,0);
+        avgPointIDy += std::imag(convertPointToComplex(pointID[sortedIndices.at<unsigned int>(i,0)/8]))*weights.at<float>(i,0);
+        if(pointID[sortedIndices.at<unsigned int>(i,0)/8]<10)
+            qDebug() << pointID[sortedIndices.at<unsigned int>(i,0)/8] << "  " << sortedIndices.at<unsigned int>(i,0)%8;
+        else
+            qDebug() << pointID[sortedIndices.at<unsigned int>(i,0)/8] << " " << sortedIndices.at<unsigned int>(i,0)%8;
+    }
+    cv::Scalar sumOfWeights = sum(weights);
+    avgPointIDx = avgPointIDx / sumOfWeights[0];
+    avgPointIDy = avgPointIDy / sumOfWeights[0];
+    qDebug() << "Weighted Avg Point ID: " << avgPointIDx << " " << avgPointIDy << " Sum Orient: " << std::abs(sumOrientation) << " " << std::arg(sumOrientation);
+
+    //Mean yanlış, çünkü 0 ile 7'nin mean'i 3.5 ama 0 ile 7 neredeyse aynı yönde, 3.5 tam ters
+    //cv::Scalar meanOrientation = mean(nearestOrientations);
+    //qDebug() << "Orient. Mean: " << atan2(meanOrientation[1],meanOrientation[1]);// << " Orient. Median" << nearestOrientations.at<unsigned int>(num_nearest_points/2,0);
+
+
+    //cv::sort(distances, distances, CV_SORT_EVERY_COLUMN + CV_SORT_ASCENDING);
+    //std::cout << distances << std::endl << std::endl << std::endl;
+
+    qDebug() << "NEAREST POINT:" << pointID[matches[min_index].trainIdx/8];
+
+    float angle_offset = 0.05236;
+    float x_0 = 19.39;
+    x_0 = 20.47 + 0.08 * cos(angle_offset);
+    float y_0 = 7.73 -  0.62 * cos(angle_offset);
+
+    //CAUTION with subtraction of avgPointIDx avgPointIDx and avgPointIDy from x_0 and y_0 due to the map118.yaml file
+    geometry_msgs::PoseWithCovarianceStamped initialPoseMsg;
+    initialPoseMsg.header.frame_id = "/map";
+    initialPoseMsg.pose.pose.position.x = x_0 - avgPointIDx * cos(angle_offset);
+    initialPoseMsg.pose.pose.position.y = y_0 - avgPointIDy * cos(angle_offset);
+    initialPoseMsg.pose.pose.position.z = 0.0;
+    initialPoseMsg.pose.pose.orientation.z = sin(-0.5*std::arg(sumOrientation));
+    initialPoseMsg.pose.pose.orientation.w = cos(-0.5*std::arg(sumOrientation));
+
+    covariance_xy = covariance_xy * num_nearest_points * covariance_factor_xy;
+    covariance_w = covariance_w * num_nearest_points/std::abs(sumOrientation) * covariance_factor_w;
+
+    initialPoseMsg.pose.covariance[6*0+0] = covariance_xy;
+    initialPoseMsg.pose.covariance[6*1+1] = covariance_xy;
+    initialPoseMsg.pose.covariance[6*5+5] = covariance_w;
+    initialPosePublisher.publish(initialPoseMsg);
+
+
+    geometry_msgs::Twist velocityCommandMsg;
+    velocityCommandMsg.linear.x = 0;
+    velocityCommandMsg.angular.z = angular_velocity;
+    velocityCommandPublisher.publish(velocityCommandMsg);
+
+    /*//motionTimer.start();
+    motionTimerCounter = 0;
+    while(stopMotion == false){
+        velocityCommandPublisher.publish(velocityCommandMsg);
+    }
+    motionTimer.stop();
+    motionTimerCounter = 0;
+    stopMotion = false;*/
+
+    struct timespec tMotion1, tMotion2;
+    clock_gettime(CLOCK_MONOTONIC,  &tMotion1);
+    bool changeDirection = true;
+    clock_gettime(CLOCK_MONOTONIC,  &tMotion2);
+    float elapsedMotionTime = (tMotion2.tv_sec - tMotion1.tv_sec) + (double) (tMotion2.tv_nsec - tMotion1.tv_nsec) * 1e-9;
+    while(elapsedMotionTime <= (bubble_update_period-2)/3){
+        if(elapsedMotionTime <= 2*(bubble_update_period-2)/9 && elapsedMotionTime > (bubble_update_period-2)/3 && changeDirection == true){
+            velocityCommandMsg.angular.z = -1 * velocityCommandMsg.angular.z;
+            changeDirection = false;
+        }
+        else if(elapsedMotionTime > 2*(bubble_update_period-2)/3 && changeDirection == false){
+            velocityCommandMsg.angular.z = -1 * velocityCommandMsg.angular.z;
+            changeDirection = true;
+        }
+        velocityCommandPublisher.publish(velocityCommandMsg);
+        clock_gettime(CLOCK_MONOTONIC,  &tMotion2);
+        elapsedMotionTime = (tMotion2.tv_sec - tMotion1.tv_sec) + (double) (tMotion2.tv_nsec - tMotion1.tv_nsec) * 1e-9;
+    }
+
+    velocityCommandMsg.angular.z = 0;
+    velocityCommandPublisher.publish(velocityCommandMsg);
+
+    clock_gettime(CLOCK_MONOTONIC,  &t2);
+    elapsed_time = (t2.tv_sec - t1.tv_sec) + (double) (t2.tv_nsec - t1.tv_nsec) * 1e-9;
+    //qDebug() << "Time elapsed: " << elapsed_time;
+}
+
+
+int main( int argc, char* argv[] )
+{
+    ros::init( argc, argv, "bubble_space_node" );
+    ros::NodeHandle n;
+    ros::NodeHandle nh("~");
+    std::string bubbleDatabasePath;
+    nh.param("normalize_invariants", normalizeInvariants, true);
+    nh.param("tolerance", tolerance, 0.03);
+    nh.param("max_point_number", max_point_number, 5);
+    nh.param("bubble_update_period", bubble_update_period, 25.0);
+    nh.param("angular_velocity", angular_velocity, 2/(25.0-2)*9);
+    nh.param("covariance_xy", covariance_xy, 0.5*0.5);
+    nh.param("covariance_w", covariance_w, M_PI/12.0 * M_PI/12.0);
+    nh.param("covariance_factor_xy", covariance_factor_xy, 0.5);
+    nh.param("covariance_factor_w", covariance_factor_w, 0.5);
+    nh.param("grid_size", grid_size, 4);
+    nh.getParam("bubble_database_path", bubbleDatabasePath);
+
+    std::ifstream database_file(bubbleDatabasePath.c_str());
+    if (!database_file.good()){
+        ROS_FATAL("Database file cannot be found!");
+        return 0;
+    }
+
+    if(bubble_update_period < 2){
+        ROS_WARN("Minimum allowed update period is 2 seconds! Setting the update period to 2 seconds now.");
+        bubble_update_period = 2;
+        angular_velocity = 0;
+    }
+    else{
+        angular_velocity = 2/(bubble_update_period-2)*9;
+    }
+
+    ros::Subscriber sub_pclReg = n.subscribe<sensor_msgs::PointCloud2> ("/camera/depth_registered/points", 1, &pointcloudRegisteredCallback);
+
+    initialPosePublisher = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 5);
+    velocityCommandPublisher = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
+    //motionTimer = n.createTimer(ros::Duration(5.5), motionTimerCallback);
+    //motionTimer.stop();
+
+    DatabaseManager::openDB(bubbleDatabasePath.c_str());
+
+    invariantMatrix = DatabaseManager::createInvariantMatrix(normalizeInvariants);
+
+    bubbleProcess::calculateImagePanAngles(525,640,480);
+
+    bubbleProcess::calculateImageTiltAngles(525,640,480);
+
+    QStringList filterPaths;
+    filterPaths << "/home/mustafasezer/Desktop/resim/filtreler/filtre0.txt";
+    filterPaths << "/home/mustafasezer/Desktop/resim/filtreler/filtre6.txt";
+    filterPaths << "/home/mustafasezer/Desktop/resim/filtreler/filtre12.txt";
+    filterPaths << "/home/mustafasezer/Desktop/resim/filtreler/filtre18.txt";
+    filterPaths << "/home/mustafasezer/Desktop/resim/filtreler/filtre36.txt";
+
+    for(unsigned int i=0; i<filterPaths.size(); i++){
+        filters[i] = ImageProcess::mstReadFilter(filterPaths[i],29,false,false,false);
+    }
+
+    //invFile.open("/home/mustafasezer/Desktop/invFile.txt", std::ios::out);
+
+    ros::Rate r(1/bubble_update_period);
+    while (ros::ok())
+    {
+        ros::spinOnce();
+        r.sleep();
+    }
+
+    //invFile.close();
+
+    return 0;
+}

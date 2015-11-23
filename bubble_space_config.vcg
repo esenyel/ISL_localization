@@ -1,0 +1,65 @@
+Background\ ColorB=0
+Background\ ColorG=0
+Background\ ColorR=0
+Camera\ Config=1.43279 1.5358 33.0944 18.9969 7.05689 -1.07181
+Camera\ Type=rviz::OrbitViewController
+Fixed\ Frame=/map
+LaserScan..AxisColorAutocompute\ Value\ Bounds=1
+LaserScan..AxisColorAxis=2
+LaserScan..AxisColorMax\ Value=10
+LaserScan..AxisColorMin\ Value=-10
+LaserScan..AxisColorUse\ Fixed\ Frame=1
+LaserScan..FlatColorColorB=1
+LaserScan..FlatColorColorG=1
+LaserScan..FlatColorColorR=1
+LaserScan..IntensityAutocompute\ Intensity\ Bounds=1
+LaserScan..IntensityChannel\ Name=intensity
+LaserScan..IntensityMax\ ColorB=1
+LaserScan..IntensityMax\ ColorG=1
+LaserScan..IntensityMax\ ColorR=1
+LaserScan..IntensityMax\ Intensity=4096
+LaserScan..IntensityMin\ ColorB=0
+LaserScan..IntensityMin\ ColorG=0
+LaserScan..IntensityMin\ ColorR=0
+LaserScan..IntensityMin\ Intensity=0
+LaserScan..IntensityUse\ full\ RGB\ spectrum=0
+LaserScan.Alpha=1
+LaserScan.Billboard\ Size=0.01
+LaserScan.Color\ Transformer=
+LaserScan.Decay\ Time=0
+LaserScan.Enabled=1
+LaserScan.Position\ Transformer=
+LaserScan.Queue\ Size=10
+LaserScan.Selectable=1
+LaserScan.Style=1
+LaserScan.Topic=/scan
+Map.Alpha=0.7
+Map.Draw\ Behind=0
+Map.Enabled=1
+Map.Topic=/map
+PoseArray.Arrow\ Length=0.3
+PoseArray.ColorB=0
+PoseArray.ColorG=0.1
+PoseArray.ColorR=1
+PoseArray.Enabled=1
+PoseArray.Topic=/particlecloud
+Property\ Grid\ Splitter=473,78
+Property\ Grid\ State=expanded=.Global Options,LaserScan.Enabled,Map.Enabled,PoseArray.Enabled;splitterratio=0.5
+QMainWindow=000000ff00000000fd00000003000000000000011d00000279fc0200000001fb000000100044006900730070006c006100790073010000003600000279000000ee00ffffff000000010000013100000279fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000036000000a20000006700fffffffb0000000a0056006900650077007301000000de00000129000000bb00fffffffb0000001200530065006c0065006300740069006f006e010000020d000000a20000006700ffffff00000003000005660000003efc0100000001fb0000000800540069006d0065010000000000000566000002bf00ffffff0000030c0000027900000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+Target\ Frame=<Fixed Frame>
+Tool\ 2D\ Nav\ GoalTopic=/move_base_simple/goal
+Tool\ 2D\ Pose\ EstimateTopic=initialpose
+[Display0]
+ClassName=rviz::LaserScanDisplay
+Name=LaserScan
+[Display1]
+ClassName=rviz::MapDisplay
+Name=Map
+[Display2]
+ClassName=rviz::PoseArrayDisplay
+Name=PoseArray
+[Window]
+Height=791
+Width=1398
+X=-16
+Y=-56
