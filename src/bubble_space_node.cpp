@@ -141,6 +141,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
             }
         }
 
+        std::cout << "image is constructed" << std::endl;
 
         //For all filters
 
@@ -177,6 +178,8 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
             }
         }
 
+        std::cout << "filters are applied" << std::endl;
+
         //For the hue image, calculate bubbles, the invariant vector, normalize it and append to the overall vector
         cv::Mat hueChannel= ImageProcess::generateChannelImage(bgr_image,0,satLower,satUpper,valLower,valUpper);
         vector<bubblePoint> hueBubble = bubbleProcess::convertGrayImage2Bub(hueChannel,focalLengthPixels,180);
@@ -189,6 +192,9 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
         else{
             cv::hconcat(invariants, bubbleProcess::mstCalculateInvariants(reducedHueBubble,dfcoeffRGB,noHarmonics,noHarmonics), invariants);
         }
+
+
+        std::cout << "hue invariants are constructed" << std::endl;
 
         //rotation around X and Y to get same coordinates with RGB frame and database images
         int rotX=-90;
@@ -247,6 +253,8 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
             cv::hconcat(invariants, bubbleProcess::mstCalculateInvariants(sphRedBubble, dfcoeff,noHarmonics, noHarmonics), invariants);
         }
     }
+
+    std::cout << "depth invariants are constructed" << std::endl;
 
     //std::cout << invariants << std::endl;
     invariants.copyTo(callbackStruct->invariants);
@@ -383,7 +391,6 @@ int main( int argc, char* argv[] )
 
             rotation_count++;
             std::cout << rotation_count << std::endl;
-            std::cout << "xx" << std::endl;
             is_callback_called=false;
         }
 
@@ -392,7 +399,7 @@ int main( int argc, char* argv[] )
     }
 
     // estimate the location of the robot based on the database invariant matrix and the current invariants
-    //location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
+    location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
 
 
     ROS_INFO("ROS EXIT");
