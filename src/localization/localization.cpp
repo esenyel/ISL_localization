@@ -182,7 +182,8 @@ cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat
         cv::minMaxIdx(summation.row(m),minVal, maxVal);
 
         std::cout << "d" << std::endl;
-        gamma.at<double>(m,0)= *minVal;
+        double minimum_value=*minVal;
+        gamma.at<double>(m,0)= minimum_value;
         k.at<double>(m,0)=exp(-pow (gamma.at<double>(m,0), 2));
     }
 
