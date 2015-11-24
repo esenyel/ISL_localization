@@ -157,25 +157,30 @@ cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat
     cv::Mat gamma(base_point_number,1,CV_32F) ;
     cv::Mat k(base_point_number,1,CV_32F) ;
 
-    summation= cv::Mat::zeros(base_point_number,orientation_number, CV_32F);
+    std::cout << "a" << std::endl;
+    //summation= cv::Mat::zeros(base_point_number,orientation_number, CV_32F);
 
     for(int i=0; i<base_point_number; i++ ){
         cv::Mat dummy_invariants = invariant_matrix.rowRange(orientation_number*i , (orientation_number*(i+1)));
         dummy_invariants.copyTo(I[i]);
+        std::cout << "b" << std::endl;
     }
 
 
     for (int m=0; m<base_point_number; m++){
         for (int k=0; k<orientation_number; k++){
+            summation.at<float>(m,k)=0;
             for (int i=0; i<orientation_number; i++){
 
                 summation.at<float>(m,k)=summation.at<float>(m,k)+norm(omni_invariants.row(i+k)-I[m].row(i));
+                std::cout << "c" << std::endl;
 
             }
         }
         double *minVal, *maxVal;
-        cv::minMaxLoc(summation.row(m),minVal, maxVal);
+        cv::minMaxIdx(summation.row(m),minVal, maxVal);
 
+        std::cout << "d" << std::endl;
         gamma.at<double>(m,0)= *minVal;
         k.at<double>(m,0)=exp(-pow (gamma.at<double>(m,0), 2));
     }

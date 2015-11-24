@@ -72,7 +72,7 @@ pcl-1.5/pcl/impl/point_types.hpp
 pcl-1.5/pcl/io/pcd_io.h
 -
 
-/home/esen/fuerte_workspace/sandbox/ISL_localization/src/bubble_space_node.cpp
+/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/bubble_space_node.cpp
 ros/ros.h
 -
 cv_bridge/cv_bridge.h
@@ -88,15 +88,15 @@ sensor_msgs/PointCloud2.h
 stdio.h
 -
 bubbleprocess.h
-/home/esen/fuerte_workspace/sandbox/ISL_localization/src/bubbleprocess.h
+/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/bubbleprocess.h
 imageprocess.h
-/home/esen/fuerte_workspace/sandbox/ISL_localization/src/imageprocess.h
+/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/imageprocess.h
 databasemanager.h
-/home/esen/fuerte_workspace/sandbox/ISL_localization/src/databasemanager.h
+/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/databasemanager.h
 localization.h
-/home/esen/fuerte_workspace/sandbox/ISL_localization/src/localization.h
+/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/localization.h
 qstring.h
-/home/esen/fuerte_workspace/sandbox/ISL_localization/src/qstring.h
+/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/qstring.h
 fstream
 -
 iostream

@@ -50,6 +50,7 @@
 ros::Publisher velocityCommandPublisher;
 cv::Mat global_invariants;
 int callback_index=0;
+bool is_callback_called=false;
 
 typedef struct localizationStruct
 {
@@ -65,6 +66,7 @@ typedef struct localizationStruct
 
 void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localizationStruct* callbackStruct){
 
+    is_callback_called=true;
     // create variables for invariant calculation
     int satLower = 30;
     int satUpper = 230;
@@ -368,23 +370,30 @@ int main( int argc, char* argv[] )
         //Step 1: Analyze Kinect data until finding a localization in maximally three iterations
         //Get Kinect data and apply bubble space algorithm
         ros::spinOnce();
-        invariants = callback_struct.invariants;
-        std::cout << invariants << std::endl;
+        if(is_callback_called){
+            invariants = callback_struct.invariants;
 
-        // connecting the invariants as the robot turns and gets new Kinect data
-        if (rotation_count == 1){
-            omni_invariants = invariants;
-        }
-        else if (rotation_count != 0){
-            cv::vconcat(omni_invariants, invariants, omni_invariants);
+            // connecting the invariants as the robot turns and gets new Kinect data
+            if (rotation_count == 1){
+                omni_invariants = invariants;
+            }
+            else if (rotation_count != 0){
+                cv::vconcat(omni_invariants, invariants, omni_invariants);
+            }
+
+            rotation_count++;
+            std::cout << rotation_count << std::endl;
+            std::cout << "xx" << std::endl;
+            is_callback_called=false;
         }
 
-        rotation_count++;
         r.sleep();
+
     }
 
     // estimate the location of the robot based on the database invariant matrix and the current invariants
-    location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
+    //location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
+
 
     ROS_INFO("ROS EXIT");
     return 0;
