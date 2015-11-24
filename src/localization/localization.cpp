@@ -150,8 +150,9 @@ cv::Mat localization::calculateInvariants(cv::Mat bgr_image, pcl::PointCloud<pcl
 
 cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat omni_invariants, cv::Mat locations, int base_point_number, int orientation_number){
 
+    std::cout << "omni_invariant: " << omni_invariants.rows << "x" << omni_invariants.cols << std::endl;
     cv::Mat location_estimation(1, 2, CV_32F);;
-    cv::vconcat(omni_invariants, omni_invariants);
+    cv::vconcat(omni_invariants, omni_invariants,omni_invariants);
     cv::Mat I[base_point_number];
     cv::Mat summation(base_point_number,orientation_number, CV_32F);
     cv::Mat gamma(base_point_number,1,CV_32F) ;
