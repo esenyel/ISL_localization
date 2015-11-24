@@ -158,12 +158,13 @@ cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat
     cv::Mat k(base_point_number,1,CV_32F) ;
 
     std::cout << "a" << std::endl;
-    //summation= cv::Mat::zeros(base_point_number,orientation_number, CV_32F);
+
+    std::cout << "omni_invariant: " << omni_invariants.rows << "x" << omni_invariants.cols << std::endl;
 
     for(int i=0; i<base_point_number; i++ ){
         cv::Mat dummy_invariants = invariant_matrix.rowRange(orientation_number*i , (orientation_number*(i+1)));
         dummy_invariants.copyTo(I[i]);
-        std::cout << "b" << std::endl;
+        std::cout << "I" << i << ": " << I[i].rows << "x" << I[i].cols << std::endl;
     }
 
 
@@ -173,8 +174,8 @@ cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat
             for (int i=0; i<orientation_number; i++){
 
                 summation.at<float>(m,k)=summation.at<float>(m,k)+norm(omni_invariants.row(i+k)-I[m].row(i));
-                std::cout << "c" << std::endl;
-
+                std::cout << "omni_invariants.row(i+k):" << omni_invariants.row(i+k).rows << "x" << omni_invariants.row(i+k).cols << std::endl;
+                std::cout << "I[m].row(i):" << I[m].row(i).rows << "x" << I[m].row(i).cols << std::endl;
             }
         }
         double *minVal, *maxVal;
