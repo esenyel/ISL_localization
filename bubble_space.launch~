@@ -1,0 +1,23 @@
+<launch>
+
+<!-- <include file="$(find turtlebot_bringup)/minimal.launch" /> -->
+
+<include file="$(find openni_launch)/launch/openni.launch" />
+
+<include file="$(find ISL_localization)/amcl_mstf.launch" />
+
+<include file="$(find turtlebot_navigation)/config/move_base_turtlebot.launch" />
+
+<node name="map_server" pkg="map_server" type="map_server" args="$(find ISL_localization)/hector_map_mustafa.yaml" />
+
+<!--
+<node name="bubble_space_node" pkg="bubble_space_2" type="bubble_space_node" output="screen" >
+	<param name="normalize_invariants" value="true" />
+	<param name="max_point_number" type="int" value="5" />
+	<param name="tolerance" type="double" value="0.03" />
+	<param name="bubble_update_period" type="double" value="7" />
+	<param name="bubble_database_path" type="string" value="$(find ISL_localization)/test_database.db" />
+</node>
+-->
+
+</launch>

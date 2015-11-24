@@ -4,7 +4,7 @@
   <node name="bubble_space_node" pkg="ISL_localization" type="bubble_space_node" output="screen" >
 
 <param name="normalize_invariants" value="true" />
-<param name="bubble_update_period" type="double" value="15" />
+<param name="bubble_update_period" type="double" value="25" />
 <param name="harmonics_number" type="int" value="10" />
 <param name="filter_number" type="int" value="5" />
 <param name="exclude_depth" value="false" />

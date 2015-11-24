@@ -4,6 +4,8 @@
 
 <include file="$(find openni_launch)/launch/openni.launch" />
 
+<arg name="depth_registration" value="true"/>
+
 <include file="$(find ISL_localization)/amcl_mstf.launch" />
 
 <include file="$(find turtlebot_navigation)/config/move_base_turtlebot.launch" />

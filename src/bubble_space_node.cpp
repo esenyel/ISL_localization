@@ -48,8 +48,6 @@
 
 
 ros::Publisher velocityCommandPublisher;
-cv::Mat global_invariants;
-int callback_index=0;
 bool is_callback_called=false;
 
 typedef struct localizationStruct
@@ -370,19 +368,20 @@ int main( int argc, char* argv[] )
     velocityCommandPublisher = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
 
     //Set the bubble update period
-    ros::Rate r(1/bubble_update_period);
+    ros::Rate r(10);
 
     // turn the robot, get the Kinect data and calculate invariants 8 times
-    while (ros::ok() && rotation_count < (orientation_number+1))
+    while (ros::ok() && rotation_count < (orientation_number))
     {
         //Step 1: Analyze Kinect data until finding a localization in maximally three iterations
         //Get Kinect data and apply bubble space algorithm
         ros::spinOnce();
+        std::cout << is_callback_called << std::endl;
         if(is_callback_called){
             invariants = callback_struct.invariants;
 
             // connecting the invariants as the robot turns and gets new Kinect data
-            if (rotation_count == 1){
+            if (rotation_count == 0){
                 omni_invariants = invariants;
             }
             else if (rotation_count != 0){
