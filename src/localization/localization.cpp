@@ -25,7 +25,6 @@ cv::Mat localization::selectReadFilter(int filter_number, std::string filters_di
 
     std::string filter_path = filters_dir_path + "/filtre" + str_filter_no + ".txt";
 
-
     QString filter_paths = QString::fromStdString(filter_path);
 
     //Read the filters and store the kernels in an array
@@ -149,9 +148,41 @@ cv::Mat localization::calculateInvariants(cv::Mat bgr_image, pcl::PointCloud<pcl
 
 }
 
-cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat omni_invariants, cv::Mat locations){
+cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat omni_invariants, cv::Mat locations, int base_point_number, int orientation_number){
+
+    cv::Mat location_estimation(1, 2, CV_32F);;
+    cv::vconcat(omni_invariants, omni_invariants);
+    cv::Mat I[base_point_number];
+    cv::Mat summation(base_point_number,orientation_number, CV_32F);
+    cv::Mat gamma(base_point_number,1,CV_32F) ;
+    cv::Mat k(base_point_number,1,CV_32F) ;
+
+    summation= cv::Mat::zeros(base_point_number,orientation_number, CV_32F);
+
+    for(int i=0; i<base_point_number; i++ ){
+        cv::Mat dummy_invariants = invariant_matrix.rowRange(orientation_number*i , (orientation_number*(i+1)));
+        dummy_invariants.copyTo(I[i]);
+    }
 
 
+    for (int m=0; m<base_point_number; m++){
+        for (int k=0; k<orientation_number; k++){
+            for (int i=0; i<orientation_number; i++){
+
+                summation.at<float>(m,k)=summation.at<float>(m,k)+norm(omni_invariants.row(i+k)-I[m].row(i));
+
+            }
+        }
+        double *minVal, *maxVal;
+        cv::minMaxLoc(summation.row(m),minVal, maxVal);
+
+        gamma.at<double>(m,0)= *minVal;
+        k.at<double>(m,0)=exp(-pow (gamma.at<double>(m,0), 2));
+    }
+
+    std::cout << k << std::endl;
+
+    return location_estimation;
 
 }
 

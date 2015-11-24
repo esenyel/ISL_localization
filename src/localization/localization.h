@@ -25,7 +25,7 @@ public:
 
     static cv::Mat selectReadFilter(int filter_number, std::string filters_dir_path);
     static cv::Mat calculateInvariants(cv::Mat bgr_image, pcl::PointCloud<pcl::PointXYZRGB> normalCloud, cv::Mat filters[5], int noHarmonics, bool normalize_invariants);
-    static cv::Mat onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat omni_invariants, cv::Mat locations);
+    static cv::Mat onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat omni_invariants, cv::Mat locations,int base_point_number, int orientation_number);
 };
 
 #endif

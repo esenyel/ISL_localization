@@ -383,7 +383,8 @@ int main( int argc, char* argv[] )
         r.sleep();
     }
 
-    location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix);
+    // estimate the location of the robot based on the database invariant matrix and the current invariants
+    location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
 
     ROS_INFO("ROS EXIT");
     return 0;
