@@ -6,7 +6,7 @@ CMakeFiles/ISL_localization.dir/src/bubble_space_node.o
  .././src/database/databasemanager.h
  .././src/imageprocess/imageprocess.h
  .././src/localization/localization.h
- /home/esen/fuerte_workspace/sandbox/ISL_localization/src/bubble_space_node.cpp
+ /home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/src/bubble_space_node.cpp
  /opt/ros/fuerte/include/XmlRpcDecl.h
  /opt/ros/fuerte/include/XmlRpcValue.h
  /opt/ros/fuerte/include/geometry_msgs/Point.h
