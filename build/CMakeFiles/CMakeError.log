@@ -12,8 +12,8 @@ Building CXX object CMakeFiles/cmTryCompileExec.dir/CheckSymbolExists.cxx.o
 /home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/build/CMakeFiles/CMakeTmp/CheckSymbolExists.cxx:8:25: error: ‘Q_WS_WIN’ was not declared in this scope
 make[2]: *** [CMakeFiles/cmTryCompileExec.dir/CheckSymbolExists.cxx.o] Error 1
 make[2]: Leaving directory `/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/build/CMakeFiles/CMakeTmp'
-make[1]: *** [cmTryCompileExec/fast] Error 2
 make[1]: Leaving directory `/home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/build/CMakeFiles/CMakeTmp'
+make[1]: *** [cmTryCompileExec/fast] Error 2
 
 File /home/turtlebot2/fuerte_workspace/sandbox/ISL_localization/build/CMakeFiles/CMakeTmp/CheckSymbolExists.cxx:
 /* */
