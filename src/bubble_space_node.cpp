@@ -49,6 +49,7 @@
 
 ros::Publisher velocityCommandPublisher;
 bool is_callback_called=false;
+int cloud_name=0;
 
 typedef struct localizationStruct
 {
@@ -63,6 +64,8 @@ typedef struct localizationStruct
 
 
 void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localizationStruct* callbackStruct){
+
+    sensor_msgs::PointCloud2 _cloud = *cloud;
 
     is_callback_called=true;
     // create variables for invariant calculation
@@ -86,11 +89,11 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
     struct timespec t1, t2;
     double elapsed_time;
     clock_gettime(CLOCK_MONOTONIC,  &t1);
-    int cloud_name=0;
+
     //Create vector for bubbles
     std::vector<bubblePointXYZ> bubble;
     //Create vector for cloud fields
-    std::vector<sensor_msgs::PointField> fields = cloud->fields;
+    std::vector<sensor_msgs::PointField> fields = _cloud.fields;
 
     //Create empty invariant vector for current data
 
@@ -101,12 +104,12 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
     {
         ROS_INFO("Processing Pointcloud - name=rgba");
         pcl::PointCloud<pcl::PointXYZRGBA> normalCloud;
-        pcl::fromROSMsg(*cloud,normalCloud);
+        pcl::fromROSMsg(_cloud,normalCloud);
     }
     else
     {
         pcl::PointCloud<pcl::PointXYZRGB> normalCloud;
-        pcl::fromROSMsg(*cloud,normalCloud);
+        pcl::fromROSMsg(_cloud,normalCloud);
 
         QString fileName = "/home/turtlebot2/Desktop/cloud_";
 
@@ -115,7 +118,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
         fileName.append(".pcd");
         pcl::io::savePCDFileBinary(fileName.toStdString(),normalCloud);
 
-        cloud_name++;
+
         //Create BGR image matrix
         cv::Mat bgr_image;
 
@@ -141,6 +144,16 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
 
         std::cout << "image is constructed" << std::endl;
 
+        std::stringstream ss;
+        ss << cloud_name;
+        string str = ss.str();
+        string file_name="home/turtlebot2/Desktop/rgb_image";
+        string app= ".jpg";
+        string complete_name=file_name+str+app;
+
+        cv::imwrite(complete_name, bgr_image);
+
+        cloud_name++;
         //For all filters
 
         cv::Mat resg;
@@ -260,7 +273,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
     //If the localization is overcoarse, rotate it two times by 45 degrees to get new Kinect data
     geometry_msgs::Twist velocityCommandMsg;
     velocityCommandMsg.linear.x = 0;
-    velocityCommandMsg.angular.z = -angular_velocity;
+    velocityCommandMsg.angular.z = -angular_velocity/2;
     velocityCommandPublisher.publish(velocityCommandMsg);
 
     //Send velocity command message for 45 degrees rotation to left
@@ -268,7 +281,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
     clock_gettime(CLOCK_MONOTONIC,  &tMotion1);
     clock_gettime(CLOCK_MONOTONIC,  &tMotion2);
     float elapsedMotionTime = (tMotion2.tv_sec - tMotion1.tv_sec) + (double) (tMotion2.tv_nsec - tMotion1.tv_nsec) * 1e-9;
-    while(elapsedMotionTime <= (bubble_update_period-9)/12.4){
+    while(elapsedMotionTime <= 2*(bubble_update_period-9)/12.4){
         velocityCommandPublisher.publish(velocityCommandMsg);
         clock_gettime(CLOCK_MONOTONIC,  &tMotion2);
         elapsedMotionTime = (tMotion2.tv_sec - tMotion1.tv_sec) + (double) (tMotion2.tv_nsec - tMotion1.tv_nsec) * 1e-9;
@@ -371,7 +384,7 @@ int main( int argc, char* argv[] )
     ros::Rate r(10);
 
     // turn the robot, get the Kinect data and calculate invariants 8 times
-    while (ros::ok() && rotation_count < (orientation_number))
+    while (ros::ok() && rotation_count < (orientation_number+1))
     {
         //Step 1: Analyze Kinect data until finding a localization in maximally three iterations
         //Get Kinect data and apply bubble space algorithm
@@ -381,7 +394,7 @@ int main( int argc, char* argv[] )
             invariants = callback_struct.invariants;
 
             // connecting the invariants as the robot turns and gets new Kinect data
-            if (rotation_count == 0){
+            if (rotation_count == 1){
                 omni_invariants = invariants;
             }
             else if (rotation_count != 0){

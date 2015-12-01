@@ -127,6 +127,7 @@ cv::Mat DatabaseManager::createInvariantMatrix(bool normalise, int harmonics, in
             for(j=0; j<7; j++){
                 dummyVec = invariantMatrix.rowRange(i, i+1).colRange(j*100, (j+1)*100-1);
                 cv::normalize(dummyVec, dummyVec);
+                cv::normalize(invariantMatrix.rowRange(i, i+1).colRange(j*100, (j+1)*100-1), invariantMatrix.rowRange(i, i+1).colRange(j*100, (j+1)*100-1));
             }
         }
         dummyVec.release();
