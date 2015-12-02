@@ -11,6 +11,8 @@
 <param name="base_point_number" value="16" />
 <param name="orientation_number" value="8" />
 <param name="filter_no" value="5" />
+<param name="omni_directional" value="false" />
+<param name="online_localization" value="true" />
 
 <param name="positions_dir_path" type="string" value="$(find ISL_localization)/base_point_positions.txt" />
 <param name="bubble_database_path" type="string" value="$(find ISL_localization)/test_database.db" />

@@ -122,15 +122,14 @@ cv::Mat DatabaseManager::createInvariantMatrix(bool normalise, int harmonics, in
     delete pointID;
 
     if(normalise==true){
-        cv::Mat dummyVec=cv::Mat::zeros(1,100,CV_32F);
-        for(i=0; i<invariantMatrix.rows-1; i++){
-            for(j=0; j<7; j++){
-                dummyVec = invariantMatrix.rowRange(i, i+1).colRange(j*100, (j+1)*100-1);
+        cv::Mat dummyVec;
+        for(i=0; i<invariantMatrix.rows; i++){
+            for(j=0; j<length/(harmonics*harmonics); j++){
+                dummyVec = invariantMatrix.rowRange(i, i+1).colRange(j*harmonics*harmonics, (j+1)*harmonics*harmonics);
                 cv::normalize(dummyVec, dummyVec);
-                cv::normalize(invariantMatrix.rowRange(i, i+1).colRange(j*100, (j+1)*100-1), invariantMatrix.rowRange(i, i+1).colRange(j*100, (j+1)*100-1));
+
             }
         }
-        dummyVec.release();
     }
 
     return invariantMatrix;
@@ -139,13 +138,13 @@ cv::Mat DatabaseManager::createInvariantMatrix(bool normalise, int harmonics, in
 
 cv::Mat DatabaseManager::createLocationMatrix( int points){
 
-    cv::Mat location_matrix(points, 2, CV_32F);
+    cv::Mat location_matrix(points, 2, CV_64F);
     for(int i=0; i<points; i++){
 
         QSqlQuery query(QString("select * from invariant where number = %1").arg(i));
         query.next();
-        location_matrix.at<float>(i,0)=query.value(4).toFloat();
-        location_matrix.at<float>(i,1)=query.value(5).toFloat();
+        location_matrix.at<double>(i,0)=query.value(4).toFloat();
+        location_matrix.at<double>(i,1)=query.value(5).toFloat();
 
     }
 

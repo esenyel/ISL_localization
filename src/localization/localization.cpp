@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <stdlib.h>
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <QFile>
@@ -148,49 +149,57 @@ cv::Mat localization::calculateInvariants(cv::Mat bgr_image, pcl::PointCloud<pcl
 
 }
 
+// location estimation function of incoming images
 cv::Mat localization::onlineLocationEstimation(cv::Mat invariant_matrix, cv::Mat omni_invariants, cv::Mat locations, int base_point_number, int orientation_number){
 
-    std::cout << "omni_invariant: " << omni_invariants.rows << "x" << omni_invariants.cols << std::endl;
-    cv::Mat location_estimation(1, 2, CV_32F);;
+    // initialization of matrices used for location estimation
+    cv::Mat location_estimation(1, 2, CV_64F);;
     cv::vconcat(omni_invariants, omni_invariants,omni_invariants);
     cv::Mat I[base_point_number];
-    cv::Mat summation(base_point_number,orientation_number, CV_32F);
-    cv::Mat gamma(base_point_number,1,CV_32F) ;
-    cv::Mat k(base_point_number,1,CV_32F) ;
+    cv::Mat summation(base_point_number,orientation_number, CV_64F);
+    cv::Mat gamma(base_point_number,1,CV_64F) ;
+    cv::Mat k(1,base_point_number,CV_64F);
+    double K_c=0;
+    double dummy_array[orientation_number];
 
-    std::cout << "invariant_matrix:" << invariant_matrix.rows << "x" << invariant_matrix.cols << std::endl;
-
-    std::cout << "a" << std::endl;
-
+    // splitting the invariant matrix (which is invariants from all points visited before) according to the point number
     for(int i=0; i<base_point_number; i++ ){
         cv::Mat dummy_invariants = invariant_matrix.rowRange(orientation_number*i , (orientation_number*(i+1)));
         dummy_invariants.copyTo(I[i]);
 
     }
 
-
+    // calculating the summation of the difference betweeen current invariant and database invariants
     for (int m=0; m<base_point_number; m++){
-        for (int i=0; i<orientation_number; i++){
-            summation.at<float>(m,i)=0;
-            for (int k=0; k<orientation_number; k++){
+        for (int k=0; k<orientation_number; k++){
+            summation.at<double>(m,k)=0;
+            for (int i=0; i<orientation_number; i++){
 
-                summation.at<float>(m,i)=summation.at<float>(m,i)+norm(omni_invariants.row(i+k)-I[m].row(i));
-                std::cout << "summation " << m << "," << i << ": " << summation.at<float>(m,i) << std::endl;
+                summation.at<double>(m,k)=summation.at<double>(m,k)+norm(omni_invariants.row(k+i)-I[m].row(i));
+                dummy_array[k]= summation.at<double>(m,k);
 
             }
+            std::cout << dummy_array[k] << std::endl;
         }
-        double *minVal, *maxVal;
-        cv::minMaxIdx(summation.row(m),minVal, maxVal);
-        std::cout << "d" << std::endl;
-        //double minimum_value=*minVal;
-        std::cout << minVal << std::endl;
-        gamma.at<double>(m,0)= *minVal;
-        std::cout << gamma.at<double>(m,0) << std::endl;
-        k.at<double>(m,0)=exp(-pow (gamma.at<double>(m,0), 2));
-        std::cout << "g" << std::endl;
+
+        // minimizing this summation with respect to k (in order to find the angle with maximum correlation)
+        double minVal = *std::min_element(dummy_array,dummy_array+8);
+
+        // calculating gamma values for each database points
+        gamma.at<double>(m,0) = minVal;
+
+        // calculating k values for each database points
+        k.at<double>(0,m)=exp(-pow(minVal,2));
+
     }
 
-    std::cout << k << std::endl;
+    // summation of elements of k vector
+    for (int m=0; m<base_point_number; m++){
+        K_c=K_c+k.at<double>(0,m);
+    }
+
+    // location estimation calculated by location matrix, k vector and K_c value
+    location_estimation = (1/K_c)*k*locations;
 
     return location_estimation;
 

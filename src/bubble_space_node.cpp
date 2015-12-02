@@ -65,9 +65,12 @@ typedef struct localizationStruct
 
 void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localizationStruct* callbackStruct){
 
+    // reading the point cloud data from the kinect sensor
     sensor_msgs::PointCloud2 _cloud = *cloud;
 
+    //changing the global variable when the callback function is called
     is_callback_called=true;
+
     // create variables for invariant calculation
     int satLower = 30;
     int satUpper = 230;
@@ -108,6 +111,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
     }
     else
     {
+        // saving the point cloud data
         pcl::PointCloud<pcl::PointXYZRGB> normalCloud;
         pcl::fromROSMsg(_cloud,normalCloud);
 
@@ -118,6 +122,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
         fileName.append(".pcd");
         pcl::io::savePCDFileBinary(fileName.toStdString(),normalCloud);
 
+        cloud_name++;
 
         //Create BGR image matrix
         cv::Mat bgr_image;
@@ -144,18 +149,7 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
 
         std::cout << "image is constructed" << std::endl;
 
-        std::stringstream ss;
-        ss << cloud_name;
-        string str = ss.str();
-        string file_name="home/turtlebot2/Desktop/rgb_image";
-        string app= ".jpg";
-        string complete_name=file_name+str+app;
-
-        cv::imwrite(complete_name, bgr_image);
-
-        cloud_name++;
-        //For all filters
-
+        // for all filters, calculate image invariants, normalize them if normalization is true and append them
         cv::Mat resg;
 
         for(unsigned int i=0; i<5; i++){
@@ -267,10 +261,10 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
 
     std::cout << "depth invariants are constructed" << std::endl;
 
-    //std::cout << invariants << std::endl;
+    //save the invariants in to the callback struct to use in the main loop
     invariants.copyTo(callbackStruct->invariants);
 
-    //If the localization is overcoarse, rotate it two times by 45 degrees to get new Kinect data
+    //rotate the robot 45 degree to obtain new Kinect data
     geometry_msgs::Twist velocityCommandMsg;
     velocityCommandMsg.linear.x = 0;
     velocityCommandMsg.angular.z = -angular_velocity/2;
@@ -286,10 +280,20 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
         clock_gettime(CLOCK_MONOTONIC,  &tMotion2);
         elapsedMotionTime = (tMotion2.tv_sec - tMotion1.tv_sec) + (double) (tMotion2.tv_nsec - tMotion1.tv_nsec) * 1e-9;
     }
-    velocityCommandMsg.angular.z = 0;
-    velocityCommandPublisher.publish(velocityCommandMsg);
 
-    //Calculate the processing line
+    struct timespec t_stop1, t_stop2;
+    clock_gettime(CLOCK_MONOTONIC,  &t_stop1);
+    clock_gettime(CLOCK_MONOTONIC,  &t_stop2);
+    float elapsedStopTime=(t_stop2.tv_sec - t_stop1.tv_sec) + (double) (t_stop2.tv_nsec - t_stop1.tv_nsec) * 1e-9;
+    while(elapsedStopTime <= 1){
+        velocityCommandMsg.angular.z = 0;
+        velocityCommandPublisher.publish(velocityCommandMsg);
+        clock_gettime(CLOCK_MONOTONIC,  &t_stop2);
+        elapsedStopTime=(t_stop2.tv_sec - t_stop1.tv_sec) + (double) (t_stop2.tv_nsec - t_stop1.tv_nsec) * 1e-9;
+    }
+
+
+    //Calculate the processing time
     clock_gettime(CLOCK_MONOTONIC,  &t2);
     elapsed_time = (t2.tv_sec - t1.tv_sec) + (double) (t2.tv_nsec - t1.tv_nsec) * 1e-9;
     qDebug() << "Processed in " << elapsed_time << " seconds.";
@@ -297,6 +301,9 @@ void localizationCallback(const sensor_msgs::PointCloud2ConstPtr& cloud, localiz
 
 int main( int argc, char* argv[] )
 {
+    struct timespec t_initial, t_final, t_loc_estimation1, t_loc_estimation2;
+    clock_gettime(CLOCK_MONOTONIC, &t_initial);
+
     //Initialize the ROS node for bubble space
     ros::init( argc, argv, "bubble_space_node" );
     ros::NodeHandle n;
@@ -304,6 +311,7 @@ int main( int argc, char* argv[] )
 
     bool normalize_invariants;
     bool exclude_depth;
+    bool omni_directional, online_localization;
     int rotation_count=0;
     cv::Mat invariantMatrix;
     cv::Mat omni_invariants;
@@ -318,6 +326,7 @@ int main( int argc, char* argv[] )
     //Read the parameters
     std::string bubble_database_path, filters_dir_path, positions_dir_path;
     int base_point_number, orientation_number, filter_no, noHarmonics;
+
     nh.param("normalize_invariants", normalize_invariants, true);
     nh.param("bubble_update_period", bubble_update_period, 25.0);
     nh.param("angular_velocity", angular_velocity, 2/(25.0-5)*9);
@@ -329,6 +338,9 @@ int main( int argc, char* argv[] )
     nh.getParam("orientation_number", orientation_number);
     nh.getParam("filter_no", filter_no);
     nh.getParam("positions_dir_path", positions_dir_path);
+    nh.getParam("omni_directional",omni_directional);
+    nh.getParam("online_localization",online_localization);
+
 
     //Check, whether the database file path is good
     std::ifstream database_file(bubble_database_path.c_str());
@@ -384,35 +396,41 @@ int main( int argc, char* argv[] )
     ros::Rate r(10);
 
     // turn the robot, get the Kinect data and calculate invariants 8 times
-    while (ros::ok() && rotation_count < (orientation_number+1))
-    {
-        //Step 1: Analyze Kinect data until finding a localization in maximally three iterations
-        //Get Kinect data and apply bubble space algorithm
-        ros::spinOnce();
-        std::cout << is_callback_called << std::endl;
-        if(is_callback_called){
-            invariants = callback_struct.invariants;
+    if (online_localization && !omni_directional){
+        while (ros::ok() && rotation_count < (orientation_number+1))
+        {
+            //Step 1: Analyze Kinect data until finding a localization in maximally three iterations
+            //Get Kinect data and apply bubble space algorithm
+            ros::spinOnce();
+            std::cout << is_callback_called << std::endl;
+            if(is_callback_called){
+                invariants = callback_struct.invariants;
 
-            // connecting the invariants as the robot turns and gets new Kinect data
-            if (rotation_count == 1){
-                omni_invariants = invariants;
-            }
-            else if (rotation_count != 0){
-                cv::vconcat(omni_invariants, invariants, omni_invariants);
+                // connecting the invariants as the robot turns and gets new Kinect data
+                if (rotation_count == 1){
+                    omni_invariants = invariants;
+                }
+                else if (rotation_count != 0){
+                    cv::vconcat(omni_invariants, invariants, omni_invariants);
+                }
+
+                rotation_count++;
+                std::cout << rotation_count << std::endl;
+                is_callback_called=false;
             }
 
-            rotation_count++;
-            std::cout << rotation_count << std::endl;
-            is_callback_called=false;
+            r.sleep();
+
         }
 
-        r.sleep();
-
+        // estimate the location of the robot based on the database invariant matrix and the current invariants
+        location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
     }
 
-    // estimate the location of the robot based on the database invariant matrix and the current invariants
-    location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
-
+    std::cout << "Estimated location is:" << location_estimation << std::endl;
+    clock_gettime(CLOCK_MONOTONIC, &t_final);
+    double elapsed_time = (t_final.tv_sec - t_initial.tv_sec) + (double) (t_final.tv_nsec - t_initial.tv_nsec) * 1e-9;
+    qDebug() << "Processed in " << elapsed_time << " seconds.";
 
     ROS_INFO("ROS EXIT");
     return 0;

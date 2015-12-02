@@ -16,7 +16,5 @@
 <param name="bubble_database_path" type="string" value="$(find ISL_localization)/test_database.db" />
 <param name="filters_dir_path" type="string" value="$(find ISL_localization)/filtreler/" />
 
-<!-- <param name="angular_velocity" type="double" value="1.0" /> -->
-
 </node>
 </launch>
