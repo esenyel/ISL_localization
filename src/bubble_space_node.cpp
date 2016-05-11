@@ -316,15 +316,22 @@ int main( int argc, char* argv[] )
     cv::Mat invariantMatrix;
     cv::Mat omni_invariants;
     cv::Mat invariants;
-
+    cv::Mat bubble_location_matrix;
 
     double angular_velocity;
     double bubble_update_period;
     cv::Mat location_estimation;
 
 
+    DatabaseManager current_place_db_manager;
+    DatabaseManager learned_place_db_manager;
+    DatabaseManager bubble_database_manager;
+
+    localizationStruct callback_struct;
+
+
     //Read the parameters
-    std::string bubble_database_path, filters_dir_path, positions_dir_path;
+    std::string bubble_database_path, filters_dir_path, positions_dir_path, learned_place_dir_path, current_place_dir_path;
     int base_point_number, orientation_number, filter_no, noHarmonics;
 
     nh.param("normalize_invariants", normalize_invariants, true);
@@ -341,56 +348,69 @@ int main( int argc, char* argv[] )
     nh.getParam("omni_directional",omni_directional);
     nh.getParam("online_localization",online_localization);
 
+    if(!online_localization){
 
-    //Check, whether the database file path is good
-    std::ifstream database_file(bubble_database_path.c_str());
-    if (!database_file.good()){
-        ROS_FATAL("Database file cannot be found!");
-        return 0;
+        nh.getParam("learned_place_dir_path",learned_place_dir_path);
+        nh.getParam("current_place_dir_path",current_place_dir_path);
+
+        std::string learned_place_db_path = learned_place_dir_path.append("/detected_places.db");
+        std::string current_place_db_path = current_place_dir_path.append("/detected_places.db");
+
+        learned_place_db_manager.openDB(learned_place_db_path.c_str());
+        current_place_db_manager.openDB(current_place_db_path.c_str());
+
     }
 
+    if (online_localization){
+        //Check, whether the database file path is good
+        std::ifstream database_file(bubble_database_path.c_str());
+        if (!database_file.good()){
+            ROS_FATAL("Database file cannot be found!");
+            return 0;
+        }
 
-    //Check minimum bubble update period and calculate the angular velocity according to bubble update period
-    if(bubble_update_period < 5){
-        ROS_WARN("Minimum allowed update period is 5 seconds! Setting the update period to 2 seconds now.");
-        bubble_update_period = 5;
-        angular_velocity = 0;
+
+        //Check minimum bubble update period and calculate the angular velocity according to bubble update period
+        if(bubble_update_period < 5){
+            ROS_WARN("Minimum allowed update period is 5 seconds! Setting the update period to 2 seconds now.");
+            bubble_update_period = 5;
+            angular_velocity = 0;
+        }
+        else{
+            angular_velocity = 2/(bubble_update_period-5)*9;        //2 radians
+        }
+        //cv::Mat location_matrix(base_point_number, 2, CV_32F);
+        //Open database
+        bubble_database_manager.openDB(bubble_database_path.c_str());
+        //Read the database and create the invariant matrix
+        //invariantMatrix = DatabaseManager::createInvariantMatrix(normalize_invariants, noHarmonics);
+        invariantMatrix=bubble_database_manager.createInvariantMatrix(normalize_invariants, noHarmonics, orientation_number, base_point_number, filter_no);
+        ROS_INFO("Invariant database matrix is created successfully!");
+
+        //read the locations of the learned base points from the database
+        bubble_location_matrix=bubble_database_manager.createLocationMatrix(base_point_number);
+
+        //Calculate pan and tilt angles for bubble space
+        bubbleProcess::calculateImagePanAngles(525,640,480);
+        bubbleProcess::calculateImageTiltAngles(525,640,480);
+
+        // definition of filters used
+        int filter_numbers[5] = {14,16,20,21,43};
+        //read the filters
+        for(int i=0; i<filter_no; i++){
+            callback_struct.filters[i]=localization::selectReadFilter(filter_numbers[i],filters_dir_path);
+        }
+        callback_struct.bubble_update_period=bubble_update_period;
+        callback_struct.exclude_depth= exclude_depth;
+        callback_struct.normalize_invariants=normalize_invariants;
+        callback_struct.angular_velocity=angular_velocity;
+
+        //Subscriber for /camera/depth_registered/points topic
+        ros::Subscriber sub_pclReg = nh.subscribe<sensor_msgs::PointCloud2> ("/camera/depth_registered/points", 1, boost::bind(&localizationCallback, _1, &callback_struct ) );
+
+        //Publisher for cmd_vel topic
+        velocityCommandPublisher = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
     }
-    else{
-        angular_velocity = 2/(bubble_update_period-5)*9;        //2 radians
-    }
-    //cv::Mat location_matrix(base_point_number, 2, CV_32F);
-    //Open database
-    DatabaseManager::openDB(bubble_database_path.c_str());
-    //Read the database and create the invariant matrix
-    //invariantMatrix = DatabaseManager::createInvariantMatrix(normalize_invariants, noHarmonics);
-    invariantMatrix=DatabaseManager::createInvariantMatrix(normalize_invariants, noHarmonics, orientation_number, base_point_number, filter_no);
-    ROS_INFO("Invariant database matrix is created successfully!");
-
-    //read the locations of the learned base points from the database
-    cv::Mat location_matrix=DatabaseManager::createLocationMatrix(base_point_number);
-
-    //Calculate pan and tilt angles for bubble space
-    bubbleProcess::calculateImagePanAngles(525,640,480);
-    bubbleProcess::calculateImageTiltAngles(525,640,480);
-
-    localizationStruct callback_struct;
-    // definition of filters used
-    int filter_numbers[5] = {14,16,20,21,43};
-    //read the filters
-    for(int i=0; i<filter_no; i++){
-        callback_struct.filters[i]=localization::selectReadFilter(filter_numbers[i],filters_dir_path);
-    }
-    callback_struct.bubble_update_period=bubble_update_period;
-    callback_struct.exclude_depth= exclude_depth;
-    callback_struct.normalize_invariants=normalize_invariants;
-    callback_struct.angular_velocity=angular_velocity;
-
-    //Subscriber for /camera/depth_registered/points topic
-    ros::Subscriber sub_pclReg = nh.subscribe<sensor_msgs::PointCloud2> ("/camera/depth_registered/points", 1, boost::bind(&localizationCallback, _1, &callback_struct ) );
-
-    //Publisher for cmd_vel topic
-    velocityCommandPublisher = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
 
     //Set the bubble update period
     ros::Rate r(10);
@@ -424,13 +444,24 @@ int main( int argc, char* argv[] )
         }
 
         // estimate the location of the robot based on the database invariant matrix and the current invariants
-        location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, location_matrix, base_point_number, orientation_number);
+        location_estimation=localization::onlineLocationEstimation(invariantMatrix,omni_invariants, bubble_location_matrix, base_point_number, orientation_number);
+
+        std::cout << "Estimated location is:" << location_estimation << std::endl;
+        clock_gettime(CLOCK_MONOTONIC, &t_final);
+        double elapsed_time = (t_final.tv_sec - t_initial.tv_sec) + (double) (t_final.tv_nsec - t_initial.tv_nsec) * 1e-9;
+        qDebug() << "Processed in " << elapsed_time << " seconds.";
     }
 
-    std::cout << "Estimated location is:" << location_estimation << std::endl;
-    clock_gettime(CLOCK_MONOTONIC, &t_final);
-    double elapsed_time = (t_final.tv_sec - t_initial.tv_sec) + (double) (t_final.tv_nsec - t_initial.tv_nsec) * 1e-9;
-    qDebug() << "Processed in " << elapsed_time << " seconds.";
+    // if the offline localization (by images from datasets) and omnidirectional images are used:
+    if (!online_localization && omni_directional){
+        while(ros::ok())
+        {
+            ros::spinOnce();
+
+        }
+    }
+
+
 
     ROS_INFO("ROS EXIT");
     return 0;
