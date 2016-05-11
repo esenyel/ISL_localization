@@ -18,7 +18,7 @@
 <param name="bubble_database_path" type="string" value="$(find ISL_localization)/test_database.db" />
 <param name="filters_dir_path" type="string" value="$(find ISL_localization)/filtreler/" />
 <param name="current_place_dir_path" type="string" value="/home/esen/2016-05-11-09:13:36" />
-<param name="recognized_place_dir_path" type="string" value="/home/esen/2016-05-10-23:54:07" />
+<param name="learned_place_dir_path" type="string" value="/home/esen/2016-05-10-23:54:07" />
 
 </node>
 </launch>

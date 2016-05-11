@@ -361,7 +361,8 @@ int main( int argc, char* argv[] )
 
     }
 
-    if (online_localization){
+    if(online_localization){
+
         //Check, whether the database file path is good
         std::ifstream database_file(bubble_database_path.c_str());
         if (!database_file.good()){
@@ -400,17 +401,19 @@ int main( int argc, char* argv[] )
         for(int i=0; i<filter_no; i++){
             callback_struct.filters[i]=localization::selectReadFilter(filter_numbers[i],filters_dir_path);
         }
-        callback_struct.bubble_update_period=bubble_update_period;
-        callback_struct.exclude_depth= exclude_depth;
-        callback_struct.normalize_invariants=normalize_invariants;
-        callback_struct.angular_velocity=angular_velocity;
 
-        //Subscriber for /camera/depth_registered/points topic
-        ros::Subscriber sub_pclReg = nh.subscribe<sensor_msgs::PointCloud2> ("/camera/depth_registered/points", 1, boost::bind(&localizationCallback, _1, &callback_struct ) );
-
-        //Publisher for cmd_vel topic
-        velocityCommandPublisher = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
     }
+
+    callback_struct.bubble_update_period=bubble_update_period;
+    callback_struct.exclude_depth= exclude_depth;
+    callback_struct.normalize_invariants=normalize_invariants;
+    callback_struct.angular_velocity=angular_velocity;
+
+    //Subscriber for /camera/depth_registered/points topic
+    ros::Subscriber sub_pclReg = nh.subscribe<sensor_msgs::PointCloud2> ("/camera/depth_registered/points", 1, boost::bind(&localizationCallback, _1, &callback_struct ) );
+
+    //Publisher for cmd_vel topic
+    velocityCommandPublisher = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
 
     //Set the bubble update period
     ros::Rate r(10);
@@ -457,6 +460,7 @@ int main( int argc, char* argv[] )
         while(ros::ok())
         {
             ros::spinOnce();
+            std::cout << "I am here!" << std::endl;
 
         }
     }
